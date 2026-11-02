@@ -2,7 +2,7 @@
 
 A self-hosted Docker application for an Unraid server: continuous capture, a durable recognition queue, free song identification, and a web dashboard for progress, history, and preserved audio. No paid API, API key, or hosted frontend is required.
 
-**Status:** the project has been tested on an Unraid server. The release workflow publishes an image only when a semantic version tag such as `v0.1.0` is pushed.
+**Status:** an earlier Airlog build is running on Unraid. The generic stream configuration and versioned Docker Hub release workflow still need their first release and validation.
 
 ## Start on Unraid
 
@@ -16,14 +16,14 @@ There are three templates, matching the existing independent services:
 | [Worker](templates/my-airlog-worker.xml) | `airlog-worker` |
 | [Dashboard](templates/my-airlog-web.xml) | `airlog-web` |
 
-After publishing a release image to Docker Hub, install the three templates from the Docker tab in Unraid. To add the templates manually, copy this project to the server, then run:
+After a release image is published to Docker Hub, add the three XML templates to Unraid. Airlog is **not listed in Community Applications yet**, so the templates currently need to be installed manually. Download or clone the project onto Unraid, then run:
 
 ```bash
 mkdir -p /boot/config/plugins/dockerMan/templates-user
 cp templates/my-airlog-*.xml /boot/config/plugins/dockerMan/templates-user/
 ```
 
-The templates use the versioned Docker Hub image. The image must be published before adding the containers. Enter the direct audio-stream URL you want to monitor in all three templates; the app cannot read ordinary web pages or authenticated player pages. Copying templates replaces matching saved template files, so check your customized settings afterward.
+The templates use the versioned Docker Hub image. That image must be published before adding the containers. Enter the direct audio-stream URL you want to monitor in all three templates; the app cannot read ordinary web pages or authenticated player pages. Copying templates replaces matching saved template files, so check your customized settings afterward.
 
 In Unraid's **Docker** tab, click **Add Container**, choose `airlog-recorder` from the **Template** dropdown (it may have a `user` prefix), and fill in its fields. Repeat for `airlog-worker` and `airlog-web`.
 
@@ -47,7 +47,7 @@ The templates set `--user=99:100` in **Extra Parameters**. If you use different 
 
 The dashboard's **Dashboard port** field defaults to **8787**. Open **`http://YOUR-UNRAID-IP:8787`**, or use the container's **WebUI** menu entry. Change that port in the dashboard template if it is already taken.
 
-Shared settings are separate values in Unraid's three templates, not synchronized automatically. Keep **Chunk length** and **Free space reserve** consistent across all three containers. Keep recognition and retention settings consistent between worker and dashboard so the displayed policy matches the worker's behavior. Field descriptions identify the settings' roles; less frequently changed fields are under **Show more settings**. Unraid supplies the server timezone to containers.
+Shared settings are separate values in Unraid's three templates, not synchronized automatically. Keep **Chunk length** and **Free space reserve** consistent across all three containers. Keep recognition and retention settings consistent between worker and dashboard so the displayed policy matches the worker's behavior. Field descriptions identify the settings' roles; less frequently changed fields are under **Show more settings**.
 
 Enable **Autostart** for all three containers in the Docker tab. The templates also retain the restart policy, health checks, log rotation, read-only root filesystem, and writable temporary storage from the original setup. Docker health checks report problems; Docker itself does **not** restart a container just because it is unhealthy. The recorder and worker implement their own retries.
 
@@ -63,28 +63,28 @@ The overview polls every five seconds. Library results refresh when opened or wh
 
 ## Preservation and accuracy
 
-**Default behavior is intentionally conservative: all audio is kept.** Identifying a song does not establish that no DJ or advert is talking over it. No speech-over-music classifier is included, and no numeric confidence score is invented.
+Automatic matched-audio cleanup is **enabled by default after one hour**. Song recognition cannot tell whether a DJ or advert is talking over the music, so the cleanup heuristic can delete speech mixed into a matched recording. Turn automatic cleanup off if you want to keep all recordings unless you release them manually. No speech-over-music classifier or numeric confidence score is included.
 
 There are three review decisions:
 
 | Decision | Behavior |
 |---|---|
-| Automatic (initial state) | Retain unless optional automatic cleanup finds an eligible match. |
+| Automatic (initial state) | Eligible matched audio can be deleted after one hour if the five-chunk cleanup heuristic passes. Unknown, pending, failed, recovered, and boundary audio is retained. |
 | Keep | Protect this chunk and nearby automatic-cleanup candidates. |
 | Release | Permit deletion once its capture time is older than the configured grace period. This is an explicit human decision, including for unknown audio. |
 
-`MATCHED_RETENTION_HOURS=1` is the default grace period. Release on a recording already older than the grace period permits cleanup on the next worker cycle. Track history and evidence remain after deletion. The player stops at missing chunks or connection boundaries.
+`MATCHED_RETENTION_HOURS=1` is the default grace period. It applies to automatic cleanup and recordings manually released. A release on an older recording permits cleanup on the next worker cycle. Track history and recognition evidence remain after audio deletion. The player stops at missing chunks or connection boundaries.
 
-To opt into automatic cleanup after inspecting results:
+To turn automatic cleanup off:
 
-Set **Automatically delete matched music** to `true` in the worker's Unraid Edit form, click **Apply**, and set the same value in the dashboard's form. Automatic cleanup requires:
+Set **Automatically delete matched music** to `false` in both the worker and dashboard Unraid Edit forms, then click **Apply** on each. When enabled, cleanup requires:
 
 1. The target plus two neighbors on each side all have the same Shazam track ID.
 2. All five chunks are full-length, contiguous, from one connection session, and not crash-recovered.
 3. Recognition offsets advance with the audio timeline within four seconds.
 4. None is manually kept; the target is older than the grace period.
 
-This preserves at least two chunks at each detected boundary. Missing offsets, unknowns, pending work, and recognition failures block this heuristic. **It can still delete speech over recognized music**, or delete an interval based on a false match. Set this to `false` if preserving every captured announcement is more important than storage efficiency. It does not use stream metadata as deletion evidence.
+This preserves at least two chunks at each detected boundary. Missing offsets, unknowns, pending work, and recognition failures block this heuristic. **It can still delete speech over recognized music**, or delete an interval based on a false match. Keep automatic cleanup off if preserving every captured announcement is more important than storage efficiency. The heuristic does not use stream metadata as deletion evidence.
 
 Audio is normalized to **16 kHz, mono, 16-bit PCM WAV**, approximately **2.76 GB/day** before deletions (about 83 GB per 30 days). This is listenable analysis audio, not an original-quality stereo archive. Unknown audio has no expiry; disk capacity is finite. The recorder pauses at the disk reserve instead of deleting protected audio and retries automatically. A recording already in progress is finalized where space allows. An actual full disk or host power failure can lose the current tail; no system can recover a missed live stream without an upstream archive.
 
@@ -136,7 +136,7 @@ Edit settings directly in each container's Unraid **Edit** form, then click **Ap
 | Audio storage | `/mnt/user/radio/airlog` | Captures, finalized audio, sidecars, queue; same host path in all containers |
 | Dashboard port | `8787` | Host port mapped to container port 8080; dashboard only |
 | Extra Parameters: `--user` | `99:100` | Container user/group; Advanced View |
-| Stream URL | Required; no default | Direct HTTP(S) audio stream URL accessible to FFmpeg; set the same URL across containers |
+| Stream URL | Required; no default | Direct FFmpeg-compatible audio stream URL; set the same URL across containers |
 | Metadata URL | Blank | Optional station metadata endpoint; blank disables metadata polling |
 | Chunk length (seconds) | `15` | Allowed 10–30 seconds; match across containers |
 | Free space reserve (GB) | `5` | Decimal GB reserved on audio filesystem |
@@ -144,7 +144,7 @@ Edit settings directly in each container's Unraid **Edit** form, then click **Ap
 | Recognition interval (seconds) | `10` | Minimum interval between attempt starts |
 | Metadata interval (seconds) | `15` | Poll interval, minimum 5 seconds |
 | Retention grace period (hours) | `1` | Grace period before permitted deletions |
-| Automatically delete matched music | `true` | Enables the heuristic described above by default |
+| Automatically delete matched music | `true` | Enables the five-chunk heuristic described above; set `false` in worker and dashboard to disable |
 | Dashboard username / password | `admin` / blank | Optional HTTP Basic authentication; password field is masked |
 
 Internally these variable fields are passed as Docker environment variables (for example, `STREAM_URL` and `AUTO_DELETE_MATCHED`). You configure them in Unraid's input fields, not a separate file.
@@ -203,16 +203,16 @@ node tests/frontend.test.cjs
 
 Tests include real FFmpeg decoding of a generated WAV, partial-chunk recovery, import recovery across database failure, retry state transitions, conservative retention boundaries, deletion-intent recovery, history grouping, HTTP byte ranges, authentication, request validation, and CSV escaping. HTTP tests exercise the actual request handler over in-memory transports because this workspace forbids sockets. Four frontend behavior tests execute the dashboard with a DOM stand-in, covering rendering, escaping, navigation, and review actions. They do not replace a network or browser integration test.
 
-For a local run with network access, install requirements in a virtual environment and launch these in separate terminals, using identical paths:
+For a local development run, install requirements in a virtual environment and launch these in separate terminals. Set `STREAM_URL` to the same direct audio-stream URL for all three processes:
 
 ```bash
-DATA_DIR="$PWD/.local/data" AUDIO_DIR="$PWD/.local/audio" python -m radio recorder
-DATA_DIR="$PWD/.local/data" AUDIO_DIR="$PWD/.local/audio" python -m radio worker
-DATA_DIR="$PWD/.local/data" AUDIO_DIR="$PWD/.local/audio" python -m radio web
+STREAM_URL='https://your-host.example/path/to/audio-stream' DATA_DIR="$PWD/.local/data" AUDIO_DIR="$PWD/.local/audio" python -m radio recorder
+STREAM_URL='https://your-host.example/path/to/audio-stream' DATA_DIR="$PWD/.local/data" AUDIO_DIR="$PWD/.local/audio" python -m radio worker
+STREAM_URL='https://your-host.example/path/to/audio-stream' DATA_DIR="$PWD/.local/data" AUDIO_DIR="$PWD/.local/audio" python -m radio web
 ```
 
 Local web port is 8080. On Unraid, validate a 24-hour run before enabling automatic cleanup: listen to matched transitions and unknowns, check the recognition backlog, restart the containers, and confirm capture resumes and existing recordings remain playable.
 
 Audio fingerprints are sent to Shazam through ShazamIO for recognition; verify its current service terms and behavior before relying on it.
 
-Template format and installation directory verified against [Unraid’s official template example](https://github.com/unraid/unraid-community-apps-starter/blob/main/templates/example-app.xml) and [Docker Manager source](https://github.com/unraid/webgui/blob/master/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php). Live import into Unraid remains unverified in this environment.
+The XML layout follows [Unraid’s official Community Apps template starter](https://github.com/unraid/unraid-community-apps-starter/blob/main/templates/example-app.xml). Airlog has not yet been submitted to the Community Apps catalog.
