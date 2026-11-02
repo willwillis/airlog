@@ -137,7 +137,7 @@ Edit settings directly in each container's Unraid **Edit** form, then click **Ap
 | Appdata | `/mnt/cache/appdata/airlog` | SQLite, heartbeats, backups, worker lock; same host path in all containers |
 | Audio storage | `/mnt/user/radio/airlog` | Captures, finalized audio, sidecars, queue; same host path in all containers |
 | Dashboard port | `8787` | Host port mapped to container port 8080; dashboard only |
-| Stream Name | `Internet Radio` | Dashboard label; set in the web template, for example `Walmart Radio` |
+| Stream Name | `Internet Radio` | Optional dashboard label set in the web template |
 | Extra Parameters: `--user` | `99:100` | Container user/group; Advanced View |
 | Stream URL | Required; no default | Direct FFmpeg-compatible audio stream URL; set the same URL across containers |
 | Metadata URL | Blank | Optional station metadata endpoint; blank disables metadata polling |
