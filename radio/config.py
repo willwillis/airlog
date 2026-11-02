@@ -2,8 +2,6 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-STREAM = 'https://streams.radiomast.io/2ce0b08d-2fe6-42a1-b64a-9f0a682f5508'
-
 def flag(name, default='true'):
     return os.getenv(name, default).lower() in ('1', 'true', 'yes')
 
@@ -11,8 +9,8 @@ def flag(name, default='true'):
 class Config:
     data: Path = field(default_factory=lambda: Path(os.getenv('DATA_DIR', '/data')))
     audio: Path = field(default_factory=lambda: Path(os.getenv('AUDIO_DIR', '/audio')))
-    stream: str = field(default_factory=lambda: os.getenv('STREAM_URL', STREAM))
-    metadata_url: str = field(default_factory=lambda: os.getenv('METADATA_URL', STREAM + '/metadata'))
+    stream: str = field(default_factory=lambda: os.getenv('STREAM_URL', ''))
+    metadata_url: str = field(default_factory=lambda: os.getenv('METADATA_URL', ''))
     chunk_seconds: int = field(default_factory=lambda: int(os.getenv('CHUNK_SECONDS', '15')))
     sample_rate: int = 16000
     min_free_bytes: int = field(default_factory=lambda: int(float(os.getenv('MIN_FREE_GB', '5')) * 1_000_000_000))

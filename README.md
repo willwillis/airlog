@@ -1,8 +1,8 @@
-# Airlog — Walmart Radio monitor
+# Airlog — Internet radio monitor
 
 A self-hosted Docker application for an Unraid server: continuous capture, a durable recognition queue, free song identification, and a web dashboard for progress, history, and preserved audio. No paid API, API key, or hosted frontend is required.
 
-**Status:** implementation and local tests complete; a live Unraid deployment and actual Shazam/RadioMast responses still need validation. This development environment cannot access Docker, open network sockets, or download dependencies. Do not interpret the synthetic audio tests as a live broadcast soak test.
+**Status:** the project has been tested on an Unraid server. The release workflow publishes an image only when a semantic version tag such as `v0.1.0` is pushed.
 
 ## Start on Unraid
 
@@ -16,15 +16,14 @@ There are three templates, matching the existing independent services:
 | [Worker](templates/my-airlog-worker.xml) | `airlog-worker` |
 | [Dashboard](templates/my-airlog-web.xml) | `airlog-web` |
 
-Copy this project to your server. From the project directory in an Unraid terminal, build the shared image and install the templates:
+After publishing a release image to Docker Hub, install the three templates from the Docker tab in Unraid. To add the templates manually, copy this project to the server, then run:
 
 ```bash
-docker build -t airlog:local .
 mkdir -p /boot/config/plugins/dockerMan/templates-user
 cp templates/my-airlog-*.xml /boot/config/plugins/dockerMan/templates-user/
 ```
 
-The image is built locally: there is no published registry image or Community Applications listing yet. The first build needs internet access for Debian and Python dependencies. The XML templates select `airlog:local`; they do not build it. Build it before adding the containers. Copying the templates replaces matching saved template files, so check your customized settings afterward.
+The templates use the versioned Docker Hub image. The image must be published before adding the containers. Enter the direct audio-stream URL you want to monitor in all three templates; the app cannot read ordinary web pages or authenticated player pages. Copying templates replaces matching saved template files, so check your customized settings afterward.
 
 In Unraid's **Docker** tab, click **Add Container**, choose `airlog-recorder` from the **Template** dropdown (it may have a `user` prefix), and fill in its fields. Repeat for `airlog-worker` and `airlog-web`.
 
@@ -92,7 +91,7 @@ Audio is normalized to **16 kHz, mono, 16-bit PCM WAV**, approximately **2.76 GB
 ## Architecture
 
 ```text
-RadioMast ──> recorder / FFmpeg ──> WAV + durable manifests on the Audio storage mount
+Direct audio stream ──> recorder / FFmpeg ──> WAV + durable manifests on the Audio storage mount
                                          │
                                          v
                                   durable import queue
@@ -102,7 +101,7 @@ RadioMast ──> recorder / FFmpeg ──> WAV + durable manifests on the Audio
                                          │              │
                               retention decisions       v
                                                     web / dashboard
-RadioMast metadata ──> independent polling thread ────────┘
+Optional stream metadata ──> independent polling thread ────────┘
 ```
 
 ### Recorder
@@ -119,7 +118,7 @@ New chunks get priority over previously attempted chunks; under sustained load, 
 
 ShazamIO is a **free, unofficial, reverse-engineered client**, not a guaranteed service. It computes fingerprints and contacts Shazam. It can be throttled or break when the service changes. Audio remains local except for processing/fingerprint exchange performed by that library. Set `RECOGNITION_PROVIDER=none` to disable it while continuing capture and metadata logging. There is no paid fallback.
 
-Metadata polling is independent of recognition. The provided RadioMast endpoint is configurable because its current payload and availability could not be verified here. Recognized JSON shapes and `Artist - Title` labels are parsed; other payloads remain stored as raw observations and the dashboard reports `unparsed`. Errors are visible, not treated as silence or proof of a song ending. There is no ICY metadata fallback in this version.
+Metadata polling is independent of recognition. Provide the stream’s metadata endpoint when it offers one; the accepted JSON or `Artist - Title` response depends on the station. Recognized JSON shapes and `Artist - Title` labels are parsed; other payloads remain stored as raw observations and the dashboard reports `unparsed`. Errors are visible, not treated as silence or proof of a song ending. There is no ICY metadata fallback in this version.
 
 ### Retention and database
 
@@ -137,8 +136,8 @@ Edit settings directly in each container's Unraid **Edit** form, then click **Ap
 | Audio storage | `/mnt/user/radio/airlog` | Captures, finalized audio, sidecars, queue; same host path in all containers |
 | Dashboard port | `8787` | Host port mapped to container port 8080; dashboard only |
 | Extra Parameters: `--user` | `99:100` | Container user/group; Advanced View |
-| Stream URL | Supplied Walmart stream | Audio source |
-| Metadata URL | Stream URL + `/metadata` | Metadata endpoint; blank disables polling |
+| Stream URL | Required; no default | Direct HTTP(S) audio stream URL accessible to FFmpeg; set the same URL across containers |
+| Metadata URL | Blank | Optional station metadata endpoint; blank disables metadata polling |
 | Chunk length (seconds) | `15` | Allowed 10–30 seconds; match across containers |
 | Free space reserve (GB) | `5` | Decimal GB reserved on audio filesystem |
 | Recognition provider | `shazam` | `shazam` or `none` |
@@ -166,7 +165,7 @@ docker logs --tail=100 -f airlog-web
 docker exec airlog-web python scripts/backup.py
 ```
 
-For source/dependency updates, rebuild with `docker build -t airlog:local .`, then recreate each container through its Unraid **Edit → Apply** flow to use the new local image. A restart alone keeps the old container image. Do not use registry-based Update for this unpublished local image.
+To upgrade, change each container's **Repository** field to the new image version and click **Apply**. This pulls that version from Docker Hub.
 
 Backups land in the `backups` subdirectory of your chosen Appdata host path. Schedule that command with Unraid User Scripts if desired, and copy backups plus preserved audio to a different device. Backups do not expire automatically. Do not copy only the live SQLite main file without accounting for its WAL; use the backup command or stop the services first.
 
@@ -175,6 +174,24 @@ To restore: stop all services, preserve the existing appdata directory, restore 
 Never run two workers against the same appdata volume. Singleton file locks enforce this for accidental duplicates. Do not share these directories across separate servers.
 
 ## Development and verification
+
+### Publishing a release
+
+The GitHub Actions workflow at `.github/workflows/publish-image.yml` builds and pushes a **versioned `linux/amd64` image**. It does not publish on ordinary commits and does not create a `latest` tag. Pushing a version tag is the explicit release decision.
+
+In GitHub, open **Settings → Secrets and variables → Actions** and add a repository secret named `DOCKERHUB_TOKEN`. Create a Docker Hub personal access token with read/write access to `willisdocker/airlog`; do not put the token in the repository or workflow. The workflow uses the Docker Hub account `willisdocker`.
+
+Commit and push the release source and matching version in all three XML templates. Then tag and push the release. For the initial `0.1.0` release:
+
+```bash
+git push origin main
+git tag -a v0.1.0 -m "Airlog 0.1.0"
+git push origin v0.1.0
+```
+
+GitHub Actions validates the `vMAJOR.MINOR.PATCH` tag and publishes `willisdocker/airlog:MAJOR.MINOR.PATCH`. Each release needs a new semantic version. Update the three Unraid template image references to that version in the release commit so future installs use the matching image. The workflow does not create or submit a Community Applications listing; that is a separate step.
+
+The Docker build context excludes `templates/`, `icons/`, tests, and the README. Those files remain in GitHub for Unraid users and the template catalog; they are not copied into the image.
 
 Core capture, storage, HTTP, and tests use Python's standard library plus FFmpeg. ShazamIO is the only direct Python dependency, pinned in `requirements.txt`; its transitive dependencies are resolved during the image build.
 
@@ -196,6 +213,6 @@ DATA_DIR="$PWD/.local/data" AUDIO_DIR="$PWD/.local/audio" python -m radio web
 
 Local web port is 8080. On Unraid, validate a 24-hour run before enabling automatic cleanup: listen to matched transitions and unknowns, check the recognition backlog, restart the containers, and confirm capture resumes and existing recordings remain playable.
 
-References: [ShazamIO source and usage](https://github.com/shazamio/ShazamIO), [historical Walmart Radio tracker](https://github.com/scubdon/wmradio). This project does not depend on that tracker's availability.
+Audio fingerprints are sent to Shazam through ShazamIO for recognition; verify its current service terms and behavior before relying on it.
 
 Template format and installation directory verified against [Unraid’s official template example](https://github.com/unraid/unraid-community-apps-starter/blob/main/templates/example-app.xml) and [Docker Manager source](https://github.com/unraid/webgui/blob/master/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php). Live import into Unraid remains unverified in this environment.

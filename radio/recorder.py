@@ -91,6 +91,8 @@ class Recorder:
 
     def capture(self):
         config = self.config
+        if not config.stream:
+            raise RuntimeError('Set STREAM_URL to a direct audio stream URL in the container settings')
         self.close_chunk()  # Retry finalization after a transient filesystem failure.
         session = uuid.uuid4().hex
         command = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin',
