@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   publish:
-    name: Build and publish versioned image
+    name: Build and publish versioned and latest images
     runs-on: ubuntu-latest
     steps:
       - name: Check out release source
@@ -39,10 +39,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build and push versioned image
+      - name: Build and push versioned and latest tags
         uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
           push: true
-          tags: willisdocker/airlog:${{ steps.version.outputs.value }}
+          tags: |
+            willisdocker/airlog:${{ steps.version.outputs.value }}
+            willisdocker/airlog:latest

@@ -4,7 +4,7 @@
 
 A self-hosted Docker application for an Unraid server: continuous capture, a durable recognition queue, free song identification, and a web dashboard for progress, history, and preserved audio. No paid API, API key, or hosted frontend is required.
 
-**Status:** an earlier Airlog build is running on Unraid. The generic stream configuration and versioned Docker Hub release workflow still need their first release and validation.
+**Status:** Docker Hub releases are triggered by semantic version tags. Unraid templates track the `latest` image tag so updates can be detected from the Docker page.
 
 ## Start on Unraid
 
@@ -25,7 +25,7 @@ mkdir -p /boot/config/plugins/dockerMan/templates-user
 cp templates/my-airlog-*.xml /boot/config/plugins/dockerMan/templates-user/
 ```
 
-The templates use the versioned Docker Hub image. That image must be published before adding the containers. Enter the direct audio-stream URL you want to monitor in all three templates; the app cannot read ordinary web pages or authenticated player pages. Copying templates replaces matching saved template files, so check your customized settings afterward.
+The templates use `willisdocker/airlog:latest`. Publish a release to Docker Hub before adding the containers; the release workflow also publishes a versioned tag. Enter the direct audio-stream URL you want to monitor in all three templates; the app cannot read ordinary web pages or authenticated player pages. Copying templates replaces matching saved template files, so check your customized settings afterward.
 
 In Unraid's **Docker** tab, click **Add Container**, choose `airlog-recorder` from the **Template** dropdown (it may have a `user` prefix), and fill in its fields. Repeat for `airlog-worker` and `airlog-web`.
 
@@ -180,19 +180,20 @@ Never run two workers against the same appdata volume. Singleton file locks enfo
 
 ### Publishing a release
 
-The GitHub Actions workflow at `.github/workflows/publish-image.yml` builds and pushes a **versioned `linux/amd64` image**. It does not publish on ordinary commits and does not create a `latest` tag. Pushing a version tag is the explicit release decision.
+The GitHub Actions workflow at `.github/workflows/publish-image.yml` builds one `linux/amd64` image and pushes it under both its semantic version and the `latest` tag. It does not publish on ordinary commits; pushing a version tag is the explicit release decision. The Unraid templates use `latest` so Unraid can detect new releases, while version tags remain available for users who prefer to pin a release.
 
 In GitHub, open **Settings → Secrets and variables → Actions** and add a repository secret named `DOCKERHUB_TOKEN`. Create a Docker Hub personal access token with read/write access to `willisdocker/airlog`; do not put the token in the repository or workflow. The workflow uses the Docker Hub account `willisdocker`.
 
-Commit and push the release source and matching version in all three XML templates. Then tag and push the release. For this `0.1.2` release:
+Commit and push the release source. Then tag and push the release. For example:
 
 ```bash
+VERSION=0.1.3
 git push origin main
-git tag -a v0.1.2 -m "Airlog 0.1.2"
-git push origin v0.1.2
+git tag -a "v$VERSION" -m "Airlog $VERSION"
+git push origin "v$VERSION"
 ```
 
-GitHub Actions validates the `vMAJOR.MINOR.PATCH` tag and publishes `willisdocker/airlog:MAJOR.MINOR.PATCH`. Each release needs a new semantic version. Update the three Unraid template image references to that version in the release commit so future installs use the matching image. The workflow does not create or submit a Community Applications listing; that is a separate step.
+GitHub Actions validates the `vMAJOR.MINOR.PATCH` tag and publishes `willisdocker/airlog:MAJOR.MINOR.PATCH` and `willisdocker/airlog:latest` from the same build. Each release needs a new semantic version. The workflow does not create or submit a Community Applications listing; that is a separate step.
 
 The Docker build context excludes `templates/`, `icons/`, tests, and the README. Those files remain in GitHub for Unraid users and the template catalog; they are not copied into the image.
 
