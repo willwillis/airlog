@@ -1,0 +1,16 @@
+.git
+.agents
+.aws
+.codex
+.env
+.venv
+__pycache__
+**/__pycache__
+*.sqlite3*
+.local
+artifacts
+node_modules
+README.md
+templates/
+icons/
+tests/

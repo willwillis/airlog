@@ -1,0 +1,2 @@
+# Free, unofficial fingerprint client; core capture/API use only Python's standard library.
+shazamio==0.8.1

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101815"><title>Airlog · Walmart Radio</title>
+  <link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="Airlog home"><svg class="brand-icon" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true" focusable="false"><circle cx="6" cy="16" r="2.5" fill="currentColor"/><path d="M12 11a7 7 0 0 1 0 10M17 6a14 14 0 0 1 0 20M22 2a20 20 0 0 1 0 28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg> airlog<span class="brand-dot">.</span></a>
+    <div class="station"><span class="eyebrow">MONITORING</span><strong>Walmart Radio</strong><span>Continuous broadcast archive</span></div>
+    <nav aria-label="Main navigation">
+      <button data-tab="overview" class="active"><span>◉</span> Overview</button>
+      <button data-tab="library"><span>▤</span> Audio library <small id="queue-badge">—</small></button>
+      <button data-tab="history"><span>♫</span> Play history</button>
+      <button data-tab="system"><span>◎</span> System health</button>
+    </nav>
+    <div class="sidebar-bottom"><span class="status-dot" id="sidebar-dot"></span><span id="sidebar-status">Connecting to backend</span><p>YOUR STREAM. YOUR RECORD.</p></div>
+  </aside>
+  <main>
+    <header><div><span class="eyebrow">WALMART RADIO / <span id="page-label">OVERVIEW</span></span><h1 id="page-title">Every moment, accounted for.</h1></div><div class="header-right"><span id="connection" class="pill">Connecting</span><span id="clock"></span></div></header>
+    <div id="alerts" role="status" aria-live="polite"></div>
+    <section id="overview" class="page">
+      <div class="hero-grid">
+        <article class="now-card"><div class="card-top"><span class="eyebrow">LATEST AUDIO MATCH</span><span id="match-age" class="muted">Waiting for recognition</span></div><div class="record-visual" aria-hidden="true"><div class="record-label">AIR<br>LOG</div></div><div class="now-text"><h2 id="match-title">Listening for the first song</h2><p id="match-artist">Audio matches will appear here as recordings are analyzed.</p><div id="match-detail" class="muted">No identified audio yet</div></div><div class="metadata-line"><span class="status-dot"></span><span>Stream reports: <strong id="metadata-title">Waiting for metadata</strong></span></div></article>
+        <article class="capture-card"><div class="card-top"><span class="eyebrow">CAPTURE STATUS</span><span id="capture-state" class="pill">Starting</span></div><div class="capture-number" id="capture-hours">0<span>h</span> 00<span>m</span></div><p>audio captured in the last 24 hours</p><div class="progress-track"><div id="coverage-fill"></div></div><div class="capture-bottom"><span id="coverage-label">0% observed coverage</span><span id="chunk-label">15s chunks</span></div><div class="mini-status"><span>Last audio received</span><strong id="last-audio">—</strong></div><div class="mini-status"><span>Recognition</span><strong id="recognition-state">—</strong></div></article>
+      </div>
+      <div class="stats-grid"><article><span class="eyebrow">AUDIO MATCHES</span><strong id="matched-count">0</strong><span>identified chunks, not unique songs</span></article><article><span class="eyebrow">IN THE QUEUE</span><strong id="queued-count">0</strong><span>safe on disk, waiting for analysis</span></article><article><span class="eyebrow">UNIDENTIFIED</span><strong id="unknown-count">0</strong><span>preserved for another listen</span></article><article><span class="eyebrow">AUDIO STORED</span><strong id="storage-count">0 MB</strong><span id="disk-caption">Checking storage</span></article></div>
+      <article class="panel timeline-panel"><div class="section-heading"><div><h2>The last two hours</h2><p>Each block is captured audio. Empty space is unobserved time.</p></div><div class="legend"><span><i class="matched"></i> Matched</span><span><i class="unknown"></i> Unknown</span><span><i class="pending"></i> Queued</span><span><i class="error"></i> Error</span></div></div><div id="timeline" aria-label="Capture timeline"></div><div class="timeline-labels"><span id="timeline-start">—</span><span>Now</span></div></article>
+      <article class="panel"><div class="section-heading"><div><h2>Recently identified</h2><p>Consecutive audio matches grouped into observed runs.</p></div><button class="text-button" data-tab="history">View history ↗</button></div><div id="recent-plays"></div></article>
+    </section>
+    <section id="library" class="page" hidden><div class="section-heading"><p>Listen, keep important audio, or release reviewed recordings.</p><a class="button secondary" href="/api/export.csv">Export observations ↓</a></div><div class="toolbar"><label class="search-label"><span class="sr-only">Search artist or title</span><input id="search" type="search" placeholder="Search artist or title…"></label><label><span class="sr-only">Filter recordings</span><select id="filter"><option value="">All recordings</option><option value="preserved">Unmatched & kept</option><option value="matched">Audio matches</option><option value="unknown">Unidentified</option><option value="pending">Pending</option><option value="error">Recognition errors</option><option value="kept">Manually kept</option></select></label><button id="refresh-library" class="button secondary">Refresh</button></div><div class="panel table-panel" id="chunk-table"></div><div class="pagination"><span id="page-info">—</span><div><button id="previous" class="button secondary">← Previous</button><button id="next" class="button secondary">Next →</button></div></div><p class="footnote">Keep protects a chunk from deletion. Release makes it eligible after the retention grace period. Recognition does not rule out speech over music.</p></section>
+    <section id="history" class="page" hidden><div class="toolbar"><label>History source <select id="history-source"><option value="audio">Audio-identified runs</option value="metadata">Stream metadata changes</option></select></label><label id="days-label">Period <select id="history-days"><option value="1">Last 24 hours</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="3650">All history</option></select></label></div><p class="footnote" id="history-note">Times are estimated capture times, not exact song boundaries. Unknown intervals split runs; counts may overstate full song plays.</p><article class="panel" id="history-table"></article><div class="pagination"><span id="history-page-info"></span><div><button id="history-previous" class="button secondary">← Previous</button><button id="history-next" class="button secondary">Next →</button></div></div></section>
+    <section id="system" class="page" hidden><div id="service-cards" class="service-grid"></div><article class="panel"><div class="section-heading"><div><h2>Preservation policy</h2><p>Your recordings stay on your server.</p></div></div><div id="policy"></div></article><article class="panel"><div class="section-heading"><div><h2>Capture & retention events</h2><p>Connection changes, interruptions, and deletion decisions.</p></div></div><div id="events"></div></article></section>
+    <footer><span>Airlog / independent radio monitor</span><span id="last-refresh">Waiting for backend</span></footer>
+  </main>
+</div>
+<div id="player" hidden><div><strong id="player-title">Recording</strong><span id="player-subtitle"></span></div><audio id="audio" controls preload="none"></audio><label class="continue-label"><input id="continue-playback" type="checkbox" checked> Continue</label><a id="download" class="text-button" download>Download ↓</a><button id="close-player" aria-label="Close player">×</button></div>
+<dialog id="evidence-dialog"><div class="section-heading"><h2>Recognition evidence</h2><button id="close-evidence" class="button secondary">Close</button></div><pre id="evidence-content"></pre></dialog>
+<div id="toast" role="status" hidden></div>
+</body></html>

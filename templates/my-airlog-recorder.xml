@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Container version="2">
+  <Name>airlog-recorder</Name>
+  <Repository>airlog:local</Repository>
+  <Registry />
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Overview>Continuously records Walmart Radio and preserves capture files across restarts. Install all three Airlog containers. Build airlog:local first. Appdata and Audio storage must point to the same host folders in all three templates.</Overview>
+  <Category>MediaApp:Music Tools:</Category>
+  <WebUI />
+  <ExtraParams>--user=99:100 --restart=unless-stopped --stop-timeout=60 --read-only --tmpfs=/tmp:size=256m,mode=1777 --security-opt=no-new-privileges:true --cap-drop=ALL --log-driver=json-file --log-opt=max-size=10m --log-opt=max-file=3 --health-cmd="python /app/scripts/healthcheck.py recorder" --health-interval=30s --health-timeout=5s --health-start-period=60s --health-retries=3 --pull=never</ExtraParams>
+  <PostArgs>python -m radio recorder</PostArgs>
+  <Config Name="Appdata" Target="/data" Default="/mnt/cache/appdata/airlog" Mode="rw" Description="SQLite and service status. Use a direct local pool path; replace cache with your pool name. Same host path in all three templates." Type="Path" Display="always" Required="true" Mask="false">/mnt/cache/appdata/airlog</Config>
+  <Config Name="Audio storage" Target="/audio" Default="/mnt/user/radio/airlog" Mode="rw" Description="Recordings, durable queue, and recovery files. Same host path in all three templates." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/radio/airlog</Config>
+  <Config Name="Stream URL" Target="STREAM_URL" Default="https://streams.radiomast.io/2ce0b08d-2fe6-42a1-b64a-9f0a682f5508" Mode="" Description="Audio stream to record. Match this value across all three containers." Type="Variable" Display="always" Required="true" Mask="false">https://streams.radiomast.io/2ce0b08d-2fe6-42a1-b64a-9f0a682f5508</Config>
+  <Config Name="Metadata URL" Target="METADATA_URL" Default="https://streams.radiomast.io/2ce0b08d-2fe6-42a1-b64a-9f0a682f5508/metadata" Mode="" Description="Metadata endpoint. Leave empty to disable metadata polling. Used by the worker." Type="Variable" Display="advanced" Required="false" Mask="false">https://streams.radiomast.io/2ce0b08d-2fe6-42a1-b64a-9f0a682f5508/metadata</Config>
+  <Config Name="Chunk length (seconds)" Target="CHUNK_SECONDS" Default="15" Mode="" Description="10 to 30 seconds. Must match across all three containers." Type="Variable" Display="advanced" Required="true" Mask="false">15</Config>
+  <Config Name="Free space reserve (GB)" Target="MIN_FREE_GB" Default="5" Mode="" Description="Pause capture below this amount of free space. Match across all three containers." Type="Variable" Display="always" Required="true" Mask="false">5</Config>
+  <Config Name="Recognition provider" Target="RECOGNITION_PROVIDER" Default="shazam" Mode="" Description="shazam for free unofficial recognition, or none to disable. Match worker and web values." Type="Variable" Display="always" Required="true" Mask="false">shazam</Config>
+  <Config Name="Recognition interval (seconds)" Target="RECOGNITION_INTERVAL_SECONDS" Default="10" Mode="" Description="Minimum interval between recognition attempts. Match worker and web values." Type="Variable" Display="advanced" Required="true" Mask="false">10</Config>
+  <Config Name="Metadata interval (seconds)" Target="METADATA_INTERVAL_SECONDS" Default="15" Mode="" Description="Metadata polling interval, at least 5 seconds. Used by the worker." Type="Variable" Display="advanced" Required="true" Mask="false">15</Config>
+  <Config Name="Retention grace period (hours)" Target="MATCHED_RETENTION_HOURS" Default="1" Mode="" Description="Minimum age before permitted deletion. Match worker and web values." Type="Variable" Display="always" Required="true" Mask="false">1</Config>
+  <Config Name="Automatically delete matched music" Target="AUTO_DELETE_MATCHED" Default="true" Mode="" Description="false keeps audio unless manually released. true enables heuristic deletion, which can miss speech over music. Match worker and web values." Type="Variable" Display="always" Required="true" Mask="false">true</Config>
+</Container>

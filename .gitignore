@@ -1,0 +1,8 @@
+.env
+.venv/
+.local/
+artifacts/
+__pycache__/
+*.pyc
+*.sqlite3*
+node_modules/
