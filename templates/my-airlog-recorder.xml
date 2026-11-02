@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <Container version="2">
   <Name>airlog-recorder</Name>
-  <Repository>willisdocker/airlog:0.1.0</Repository>
+  <Repository>willisdocker/airlog:0.1.1</Repository>
   <Registry>https://hub.docker.com/r/willisdocker/airlog</Registry>
   <TemplateURL>https://raw.githubusercontent.com/willwillis/airlog/main/templates/my-airlog-recorder.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/willwillis/airlog/main/icons/airlog-icon.png</Icon>

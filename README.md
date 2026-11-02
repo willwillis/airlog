@@ -183,12 +183,12 @@ The GitHub Actions workflow at `.github/workflows/publish-image.yml` builds and 
 
 In GitHub, open **Settings → Secrets and variables → Actions** and add a repository secret named `DOCKERHUB_TOKEN`. Create a Docker Hub personal access token with read/write access to `willisdocker/airlog`; do not put the token in the repository or workflow. The workflow uses the Docker Hub account `willisdocker`.
 
-Commit and push the release source and matching version in all three XML templates. Then tag and push the release. For the initial `0.1.0` release:
+Commit and push the release source and matching version in all three XML templates. Then tag and push the release. For this `0.1.1` release:
 
 ```bash
 git push origin main
-git tag -a v0.1.0 -m "Airlog 0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "Airlog 0.1.1"
+git push origin v0.1.1
 ```
 
 GitHub Actions validates the `vMAJOR.MINOR.PATCH` tag and publishes `willisdocker/airlog:MAJOR.MINOR.PATCH`. Each release needs a new semantic version. Update the three Unraid template image references to that version in the release commit so future installs use the matching image. The workflow does not create or submit a Community Applications listing; that is a separate step.
