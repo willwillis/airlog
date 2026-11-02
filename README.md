@@ -1,4 +1,4 @@
-# Airlog — Internet radio monitor
+# Airlog — Internet Radio Song History
 
 ![Airlog dashboard preview](docs/airlog-preview.png)
 
