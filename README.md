@@ -137,6 +137,7 @@ Edit settings directly in each container's Unraid **Edit** form, then click **Ap
 | Appdata | `/mnt/cache/appdata/airlog` | SQLite, heartbeats, backups, worker lock; same host path in all containers |
 | Audio storage | `/mnt/user/radio/airlog` | Captures, finalized audio, sidecars, queue; same host path in all containers |
 | Dashboard port | `8787` | Host port mapped to container port 8080; dashboard only |
+| Stream Name | `Internet Radio` | Dashboard label; set in the web template, for example `Walmart Radio` |
 | Extra Parameters: `--user` | `99:100` | Container user/group; Advanced View |
 | Stream URL | Required; no default | Direct FFmpeg-compatible audio stream URL; set the same URL across containers |
 | Metadata URL | Blank | Optional station metadata endpoint; blank disables metadata polling |
@@ -149,7 +150,7 @@ Edit settings directly in each container's Unraid **Edit** form, then click **Ap
 | Automatically delete matched music | `true` | Enables the five-chunk heuristic described above; set `false` in worker and dashboard to disable |
 | Dashboard username / password | `admin` / blank | Optional HTTP Basic authentication; password field is masked |
 
-Internally these variable fields are passed as Docker environment variables (for example, `STREAM_URL` and `AUTO_DELETE_MATCHED`). You configure them in Unraid's input fields, not a separate file.
+Internally these variable fields are passed as Docker environment variables (for example, `STREAM_URL`, `STREAM_NAME`, and `AUTO_DELETE_MATCHED`). You configure them in Unraid's input fields, not a separate file. `STREAM_NAME` only affects the dashboard label and page title; it does not change stream capture or recognition.
 
 Keep the dashboard on your trusted LAN. If exposing it through a reverse proxy, use HTTPS and set **Dashboard password** or enforce authentication at that proxy. The UI can play all recordings and authorize deletion after the grace period. No CORS access is enabled. Secrets are not returned by the status API.
 
@@ -183,12 +184,12 @@ The GitHub Actions workflow at `.github/workflows/publish-image.yml` builds and 
 
 In GitHub, open **Settings → Secrets and variables → Actions** and add a repository secret named `DOCKERHUB_TOKEN`. Create a Docker Hub personal access token with read/write access to `willisdocker/airlog`; do not put the token in the repository or workflow. The workflow uses the Docker Hub account `willisdocker`.
 
-Commit and push the release source and matching version in all three XML templates. Then tag and push the release. For this `0.1.1` release:
+Commit and push the release source and matching version in all three XML templates. Then tag and push the release. For this `0.1.2` release:
 
 ```bash
 git push origin main
-git tag -a v0.1.1 -m "Airlog 0.1.1"
-git push origin v0.1.1
+git tag -a v0.1.2 -m "Airlog 0.1.2"
+git push origin v0.1.2
 ```
 
 GitHub Actions validates the `vMAJOR.MINOR.PATCH` tag and publishes `willisdocker/airlog:MAJOR.MINOR.PATCH`. Each release needs a new semantic version. Update the three Unraid template image references to that version in the release commit so future installs use the matching image. The workflow does not create or submit a Community Applications listing; that is a separate step.

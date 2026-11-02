@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <Container version="2">
   <Name>airlog-web</Name>
-  <Repository>willisdocker/airlog:0.1.1</Repository>
+  <Repository>willisdocker/airlog:0.1.2</Repository>
   <Registry>https://hub.docker.com/r/willisdocker/airlog</Registry>
   <TemplateURL>https://raw.githubusercontent.com/willwillis/airlog/main/templates/my-airlog-web.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/willwillis/airlog/main/icons/airlog-icon.png</Icon>
@@ -17,6 +17,7 @@
   <Config Name="Audio storage" Target="/audio" Default="/mnt/user/radio/airlog" Mode="rw" Description="Recordings, durable queue, and recovery files. Same host path in all three templates." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/radio/airlog</Config>
   <Config Name="Dashboard port" Target="8080" Default="8787" Mode="tcp" Description="Host port for the dashboard." Type="Port" Display="always" Required="true" Mask="false">8787</Config>
   <Config Name="Stream URL" Target="STREAM_URL" Default="" Mode="" Description="Direct audio stream URL compatible with FFmpeg. Set this for your station. Use the same value across all three containers." Type="Variable" Display="always" Required="true" Mask="false" />
+  <Config Name="Stream Name" Target="STREAM_NAME" Default="Internet Radio" Mode="" Description="Label shown in the dashboard for this stream. Example: Walmart Radio." Type="Variable" Display="always" Required="true" Mask="false">Internet Radio</Config>
   <Config Name="Metadata URL" Target="METADATA_URL" Default="" Mode="" Description="Optional metadata endpoint for the stream. Leave blank when unavailable. Used by the worker." Type="Variable" Display="advanced" Required="false" Mask="false" />
   <Config Name="Chunk length (seconds)" Target="CHUNK_SECONDS" Default="15" Mode="" Description="10 to 30 seconds. Must match across all three containers." Type="Variable" Display="advanced" Required="true" Mask="false">15</Config>
   <Config Name="Free space reserve (GB)" Target="MIN_FREE_GB" Default="5" Mode="" Description="Pause capture below this amount of free space. Match across all three containers." Type="Variable" Display="always" Required="true" Mask="false">5</Config>

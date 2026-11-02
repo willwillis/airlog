@@ -1,6 +1,7 @@
 import base64
 import csv
 import hmac
+import html
 import io
 import json
 import logging
@@ -246,7 +247,11 @@ class Handler(BaseHTTPRequestHandler):
         assets = {'/':'index.html','/app.js':'app.js','/style.css':'style.css','/favicon.svg':'favicon.svg'}
         if path in assets:
             file = STATIC / assets[path]
-            return self.send(file.read_bytes(),content_type=mimetypes.guess_type(file.name)[0] or 'application/octet-stream')
+            payload = file.read_bytes()
+            if path == '/':
+                page = payload.decode('utf-8').replace('{{STREAM_NAME}}', html.escape(self.config.stream_name))
+                payload = page.encode('utf-8')
+            return self.send(payload,content_type=mimetypes.guess_type(file.name)[0] or 'application/octet-stream')
         return self.send({'error':'Not found'},404)
 
     def serve_audio(self, path):

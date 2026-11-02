@@ -10,6 +10,7 @@ class Config:
     data: Path = field(default_factory=lambda: Path(os.getenv('DATA_DIR', '/data')))
     audio: Path = field(default_factory=lambda: Path(os.getenv('AUDIO_DIR', '/audio')))
     stream: str = field(default_factory=lambda: os.getenv('STREAM_URL', ''))
+    stream_name: str = field(default_factory=lambda: os.getenv('STREAM_NAME', 'Internet Radio').strip() or 'Internet Radio')
     metadata_url: str = field(default_factory=lambda: os.getenv('METADATA_URL', ''))
     chunk_seconds: int = field(default_factory=lambda: int(os.getenv('CHUNK_SECONDS', '15')))
     sample_rate: int = 16000
