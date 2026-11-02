@@ -10,6 +10,7 @@ __pycache__
 .local
 artifacts
 node_modules
+docs/
 README.md
 templates/
 icons/

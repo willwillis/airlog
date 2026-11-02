@@ -1,5 +1,7 @@
 # Airlog — Internet radio monitor
 
+![Airlog dashboard preview](docs/airlog-preview.png)
+
 A self-hosted Docker application for an Unraid server: continuous capture, a durable recognition queue, free song identification, and a web dashboard for progress, history, and preserved audio. No paid API, API key, or hosted frontend is required.
 
 **Status:** an earlier Airlog build is running on Unraid. The generic stream configuration and versioned Docker Hub release workflow still need their first release and validation.

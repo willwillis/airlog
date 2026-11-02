@@ -3,6 +3,8 @@
   <Name>airlog-worker</Name>
   <Repository>willisdocker/airlog:0.1.0</Repository>
   <Registry>https://hub.docker.com/r/willisdocker/airlog</Registry>
+  <TemplateURL>https://raw.githubusercontent.com/willwillis/airlog/main/templates/my-airlog-worker.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/willwillis/airlog/main/icons/airlog-icon.png</Icon>
   <Network>bridge</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
