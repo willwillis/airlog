@@ -26,12 +26,13 @@ def rows(c, sql, args=()):
 
 def play_runs(c, since, limit=100, offset=0):
     # Include unknown chunks in the window: a no-match must split two observed runs.
+    # Recorder restarts change session IDs, but should not split a continuous match.
     items = rows(c, '''WITH prior AS (
-      SELECT *, LAG(track_key) OVER w AS prev_key, LAG(session) OVER w AS prev_session, LAG(state) OVER w AS prev_state,
+      SELECT *, LAG(track_key) OVER w AS prev_key, LAG(state) OVER w AS prev_state,
         LAG(started+duration) OVER w AS prev_end FROM chunks WHERE started>=?
       WINDOW w AS (ORDER BY started,id)
     ), boundaries AS (
-      SELECT *, CASE WHEN state='matched' AND prev_state='matched' AND track_key=prev_key AND session=prev_session AND ABS(started-prev_end)<0.5
+      SELECT *, CASE WHEN state='matched' AND prev_state='matched' AND track_key=prev_key AND ABS(started-prev_end)<0.5
         THEN 0 ELSE 1 END AS boundary FROM prior
     ), grouped AS (
       SELECT *, SUM(boundary) OVER (ORDER BY started,id) AS run FROM boundaries

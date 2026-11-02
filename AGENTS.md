@@ -5,6 +5,7 @@
 - Keep Airlog generic for any direct, FFmpeg-compatible internet audio stream. Do not hardcode or feature a particular station in code, defaults, screenshots, templates, or public documentation.
 - `STREAM_NAME` is an optional label used only by the web dashboard and page title. Its default is `Internet Radio`; station-specific names belong in each user's configuration.
 - The app records audio, identifies songs, builds play history, and keeps unidentified audio available for review. After the configured grace period, matched audio may be removed automatically; its play history and metadata remain.
+- Play history groups adjacent matched chunks for the same track across recorder restarts when their capture times are continuous. Unknown chunks and real time gaps split runs.
 
 ## Architecture and configuration
 

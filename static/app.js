@@ -97,7 +97,7 @@ async function loadHistory() {
     $('history-table').innerHTML=items.length?`<table><thead><tr><th>Observed at</th><th>Stream label</th></tr></thead><tbody>${items.map(m=>`<tr><td class="time-cell">${escapeHTML(date(m.observed))}</td><td>${escapeHTML([m.artist,m.title].filter(Boolean).join(' — ')||'Unparsed metadata')}</td></tr>`).join('')}</tbody></table>`:empty('No metadata yet','Metadata polling runs independently of audio recognition.');
     setText('history-page-info',items.length+' changes');
   } else {
-    setText('history-note','Times are estimated capture times, not exact song boundaries. Unknown intervals split runs; counts may overstate full song plays.');
+    setText('history-note','Times are estimated capture times, not exact song boundaries. Unknown intervals split runs; recorder restarts do not split a continuous match. Counts may overstate full song plays.');
     const since=Date.now()/1000-Number($('history-days').value)*86400;
     const result=await api(`/api/plays?since=${since}&offset=${historyOffset}`);
     $('history-table').innerHTML=playTable(result.items);
