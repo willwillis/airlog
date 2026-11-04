@@ -33,6 +33,15 @@ test('overview renders live status and uses safe text for station titles',async(
   assert.ok(Math.abs(parseFloat(elements.timeline.children[0].style.width)-15/7200*100)<1e-10);
   assert.match(elements.policy.innerHTML,/Off · manual deletion only/);
 });
+test('enabled retention policy describes deleting matched audio unless kept',async()=>{
+  const {context,elements}=await boot();
+  vm.runInContext('renderStatus({...statusData,settings:{...statusData.settings,auto_delete:true,retention_hours:1}})',context);
+  assert.match(elements.policy.innerHTML,/Enabled · matched audio after grace period/);
+  assert.match(elements.policy.innerHTML,/Matched audio is deleted after the grace period unless marked Keep/);
+  assert.match(elements.policy.innerHTML,/including samples at song transitions/);
+  assert.match(elements.policy.innerHTML,/grace period starts when a recording ends/);
+  assert.doesNotMatch(elements.policy.innerHTML,/heuristic/);
+});
 test('library empty state and pagination work',async()=>{
   const {context,elements}=await boot();
   await context.selectTab('library');

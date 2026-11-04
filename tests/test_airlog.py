@@ -22,7 +22,7 @@ from radio.config import Config
 from radio.recorder import Recorder, finish_capture
 from radio.recognize import normalize
 from radio.storage import atomic_json, audio_path, db, delete_audio, delete_unidentified, ingest, initialize
-from radio.worker import automatic_candidate, parse_metadata, retain, recover_deletions, save_result
+from radio.worker import parse_metadata, retain, recover_deletions, save_result
 from radio.web import Handler, ThreadingHTTPServer, play_runs, snapshot
 
 
@@ -44,8 +44,8 @@ class Base(unittest.TestCase):
         path.with_suffix('.pcm').write_bytes(b'\0\0'*int(self.config.sample_rate*seconds))
         return finish_capture(self.config,item,recovered)
 
-    def chunk(self, start=1000, state='matched', offset=0, session='session', review='auto', recovered=False):
-        item=self.capture(start,session=session,recovered=recovered)
+    def chunk(self, start=1000, state='matched', offset=0, session='session', review='auto', recovered=False, seconds=15):
+        item=self.capture(start,seconds=seconds,session=session,recovered=recovered)
         ingest(self.config)
         with db(self.config) as c:
             c.execute('UPDATE chunks SET state=?,artist=?,title=?,track_key=?,offset=?,review=? WHERE id=?',
@@ -151,38 +151,94 @@ class RetentionTests(Base):
     def sequence(self):
         return [self.chunk(start=1000+i*15,offset=30+i*15) for i in range(5)]
 
-    def test_default_never_auto_deletes(self):
+    def test_disabled_cleanup_preserves_matched_audio(self):
         self.sequence()
         self.assertEqual(retain(self.config,now=100000),0)
 
-    def test_opt_in_deletes_only_interior_and_keeps_boundaries(self):
+    def test_enabled_cleanup_deletes_all_aged_matches_including_boundaries(self):
         items=self.sequence()
         self.config.auto_delete=True
-        self.assertEqual(retain(self.config,now=100000),1)
-        for i,item in enumerate(items):
-            self.assertEqual(audio_path(self.config,item['path']).exists(),i!=2)
+        self.assertEqual(retain(self.config,now=100000),5)
+        for item in items:
+            self.assertFalse(audio_path(self.config,item['path']).exists())
         self.assertEqual(retain(self.config,now=100000),0)
+        with db(self.config) as c:
+            events=c.execute('SELECT detail FROM events').fetchall()
+            self.assertEqual(len(events),5)
+            self.assertTrue(all(json.loads(event[0])['reason']=='automatic_matched' for event in events))
 
-    def test_keep_protects_chunk_and_nearby_boundaries(self):
+    def test_keep_protects_only_the_kept_chunk(self):
         items=self.sequence()
         with db(self.config) as c:
             c.execute("UPDATE chunks SET review='keep' WHERE id=?",(items[2]['id'],))
         self.config.auto_delete=True
-        self.assertEqual(retain(self.config,now=100000),0)
+        self.assertEqual(retain(self.config,now=100000),4)
+        for i,item in enumerate(items):
+            self.assertEqual(audio_path(self.config,item['path']).exists(),i==2)
 
-    def test_discontinuous_offsets_block_deletion(self):
+    def test_discontinuous_offsets_do_not_prevent_deletion(self):
         items=self.sequence()
         with db(self.config) as c:
             c.execute('UPDATE chunks SET offset=999 WHERE id=?',(items[2]['id'],))
         self.config.auto_delete=True
-        self.assertEqual(retain(self.config,now=100000),0)
+        self.assertEqual(retain(self.config,now=100000),5)
 
-    def test_session_boundary_blocks_deletion(self):
+    def test_session_boundary_does_not_prevent_deletion(self):
         items=self.sequence()
         with db(self.config) as c:
             c.execute("UPDATE chunks SET session='new' WHERE id=?",(items[4]['id'],))
         self.config.auto_delete=True
-        self.assertEqual(retain(self.config,now=100000),0)
+        self.assertEqual(retain(self.config,now=100000),5)
+
+    def test_alternating_matches_and_unknown_neighbors_do_not_prevent_deletion(self):
+        self.chunk(start=985,state='unknown')
+        items=self.sequence()
+        self.chunk(start=1075,state='unknown')
+        with db(self.config) as c:
+            for item in items[::2]:
+                c.execute("UPDATE chunks SET track_key='other' WHERE id=?",(item['id'],))
+        self.config.auto_delete=True
+        self.assertEqual(retain(self.config,now=100000),5)
+        with db(self.config) as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM chunks WHERE deleted_at IS NULL').fetchone()[0],2)
+
+    def test_isolated_recovered_partial_match_without_offset_is_deleted(self):
+        item=self.chunk(recovered=True,seconds=2.25,offset=None)
+        self.config.auto_delete=True
+        self.assertEqual(retain(self.config,now=100000),1)
+        self.assertFalse(audio_path(self.config,item['path']).exists())
+
+    def test_matched_cleanup_waits_one_hour_after_capture_ends(self):
+        item=self.chunk(start=1000)
+        self.config.auto_delete=True
+        deadline=item['started']+item['duration']+3600
+        self.assertEqual(retain(self.config,now=deadline-.01),0)
+        self.assertTrue(audio_path(self.config,item['path']).exists())
+        self.assertEqual(retain(self.config,now=deadline),1)
+
+    def test_matched_cleanup_respects_configured_grace_period(self):
+        item=self.chunk(start=1000)
+        self.config.auto_delete=True
+        self.config.retention_hours=2
+        self.assertEqual(retain(self.config,now=4615),0)
+        self.assertTrue(audio_path(self.config,item['path']).exists())
+        self.assertEqual(retain(self.config,now=8215),1)
+
+    def test_automatic_cleanup_retains_history_and_recognition_evidence(self):
+        item=self.chunk()
+        with db(self.config) as c:
+            c.execute('INSERT INTO observations(chunk_id,observed,provider,result) VALUES (?,?,?,?)',
+                      (item['id'],1000,'shazam','{}'))
+            before=play_runs(c,0)
+        self.config.auto_delete=True
+        self.assertEqual(retain(self.config,now=100000),1)
+        with db(self.config) as c:
+            row=c.execute('SELECT * FROM chunks').fetchone()
+            self.assertEqual(row['state'],'matched')
+            self.assertEqual(row['title'],'Song')
+            self.assertEqual(row['deleted_at'],100000)
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM observations').fetchone()[0],1)
+            self.assertEqual(play_runs(c,0),[{**before[0],'available':0}])
 
     def test_manual_release_respects_grace_and_retains_history(self):
         item=self.chunk(review='release')
@@ -211,12 +267,16 @@ class RetentionTests(Base):
         with db(self.config) as c:
             self.assertIsNone(c.execute('SELECT deleted_at FROM chunks').fetchone()[0])
 
-    def test_unknown_retry_recovered_and_partial_never_auto_deleted(self):
-        for state in ('unknown','retry','error'):
-            self.chunk(state=state)
-        self.chunk(recovered=True)
+    def test_unidentified_pending_retry_and_error_audio_are_retained(self):
+        items=[self.chunk(state=state) for state in ('unknown','pending','retry','error')]
+        items.append(self.chunk(state='unknown',recovered=True,seconds=2.25))
+        # Stale song metadata on a pending retry must not count as an active match.
+        with db(self.config) as c:
+            c.execute("UPDATE chunks SET track_key='123'")
         self.config.auto_delete=True
         self.assertEqual(retain(self.config,now=100000),0)
+        for item in items:
+            self.assertTrue(audio_path(self.config,item['path']).exists())
 
 
 class HistoryTests(Base):

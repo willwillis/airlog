@@ -77,39 +77,18 @@ def save_result(config, chunk, result, now=None):
             result.get('track_key'), result.get('offset'), attempts, retry, error, chunk['id']))
 
 
-def automatic_candidate(c, row, chunk_seconds):
-    """A heuristic, NOT a guarantee against speech over music. Explicit opt-in only."""
-    if row['state'] != 'matched' or row['offset'] is None or row['recovered']:
-        return False
-    before = list(c.execute('SELECT * FROM chunks WHERE started<? ORDER BY started DESC LIMIT 2', (row['started'],)))
-    after = list(c.execute('SELECT * FROM chunks WHERE started>? ORDER BY started LIMIT 2', (row['started'],)))
-    if len(before) != 2 or len(after) != 2:
-        return False
-    sequence = list(reversed(before)) + [row] + after
-    for item in sequence:
-        if (item['session'] != row['session'] or item['state'] != 'matched' or item['track_key'] != row['track_key']
-                or item['offset'] is None or item['recovered'] or item['duration'] < chunk_seconds - .1
-                or item['review'] == 'keep'):
-            return False
-        # The song-position estimate must advance in step with the captured audio.
-        if abs((item['offset'] - row['offset']) - (item['started'] - row['started'])) > 4:
-            return False
-    return all(abs(b['started'] - (a['started'] + a['duration'])) < .5 for a, b in zip(sequence, sequence[1:]))
-
-
 def retain(config, now=None):
+    """Delete aged matched or manually released audio, preserving Keep reviews."""
     now = now or time.time()
     removed = 0
     with db(config) as c:
         c.execute('BEGIN IMMEDIATE')
         candidates = list(c.execute('''SELECT * FROM chunks WHERE deleted_at IS NULL AND review != 'keep'
-            AND started+duration < ? AND (review='release' OR (state='matched' AND ?)) ORDER BY retention_checked,started LIMIT 1000''',
+            AND started+duration <= ? AND (review='release' OR (state='matched' AND ?)) ORDER BY retention_checked,started LIMIT 1000''',
                                    (now - config.retention_hours * 3600, int(config.auto_delete))))
         for row in candidates:
             c.execute('UPDATE chunks SET retention_checked=? WHERE id=?', (now, row['id']))
-            if row['review'] != 'release' and not (config.auto_delete and automatic_candidate(c, row, config.chunk_seconds)):
-                continue
-            reason = 'manual_release' if row['review'] == 'release' else 'automatic_heuristic'
+            reason = 'manual_release' if row['review'] == 'release' else 'automatic_matched'
             delete_audio(config, c, row, now, reason)
             removed += 1
     # Only acknowledge tombstones after the SQLite commit.

@@ -65,30 +65,25 @@ The overview polls every five seconds. Library results refresh when opened or wh
 
 ## Preservation and accuracy
 
-Automatic matched-audio cleanup is **enabled by default after one hour**. Song recognition cannot tell whether a DJ or advert is talking over the music, so the cleanup heuristic can delete speech mixed into a matched recording. Turn automatic cleanup off if you want to keep all recordings unless you release them manually. No speech-over-music classifier or numeric confidence score is included.
+Automatic matched-audio cleanup is **enabled by default after one hour**. Identified audio is deleted after the configured grace period unless marked **Keep**, including samples at song transitions. Song recognition can identify music underneath speech, so matched recordings containing speech are also eligible. No speech-over-music classifier or numeric confidence score is included.
 
 There are three review decisions:
 
 | Decision | Behavior |
 |---|---|
-| Automatic (initial state) | Eligible matched audio can be deleted after one hour if the five-chunk cleanup heuristic passes. Unknown, pending, failed, recovered, and boundary audio is retained. |
-| Keep | Protect this chunk and nearby automatic-cleanup candidates. |
+| Automatic (initial state) | With automatic cleanup enabled, matched audio is deleted after the grace period. Unidentified, pending, retrying, and failed audio is retained. |
+| Keep | Protect this chunk from deletion. Nearby chunks follow their own retention rules. |
 | Release | Permit deletion once its capture time is older than the configured grace period. This is an explicit human decision, including for unknown audio. |
 
-`MATCHED_RETENTION_HOURS=1` is the default grace period. It applies to automatic cleanup and recordings manually released. A release on an older recording permits cleanup on the next worker cycle. Track history and recognition evidence remain after audio deletion. The player stops at missing chunks or connection boundaries.
+`MATCHED_RETENTION_HOURS=1` is the default grace period, measured from the end of each recording. It applies to automatic cleanup and recordings manually released. The worker checks for cleanup about once a minute, processing up to 1,000 eligible recordings per pass. Existing matched audio older than the grace period is eligible on the next pass after updating. Track history and recognition evidence remain after audio deletion. The player stops at missing chunks or connection boundaries.
 
 In the audio library, **Delete unidentified…** asks for confirmation before immediately deleting all unidentified (`unknown`) audio that is not marked **Keep**, across all pages and filters. This manual action bypasses the grace period and works even when automatic cleanup is disabled. Matched, pending, retrying, failed, and kept samples are preserved. Deleted samples retain their records and recognition evidence and appear as **audio deleted** in the library.
 
 To turn automatic cleanup off:
 
-Set **Automatically delete matched music** to `false` in both the worker and dashboard Unraid Edit forms, then click **Apply** on each. When enabled, cleanup requires:
+Set **Automatically delete matched music** to `false` in both the worker and dashboard Unraid Edit forms, then click **Apply** on each. This disables automatic deletion of matched audio; manually released recordings remain eligible after the grace period, and the library’s bulk-delete action remains available.
 
-1. The target plus two neighbors on each side all have the same Shazam track ID.
-2. All five chunks are full-length, contiguous, from one connection session, and not crash-recovered.
-3. Recognition offsets advance with the audio timeline within four seconds.
-4. None is manually kept; the target is older than the grace period.
-
-This preserves at least two chunks at each detected boundary. Missing offsets, unknowns, pending work, and recognition failures block this heuristic. **It can still delete speech over recognized music**, or delete an interval based on a false match. Keep automatic cleanup off if preserving every captured announcement is more important than storage efficiency. The heuristic does not use stream metadata as deletion evidence.
+Automatic cleanup treats every matched recording independently. Neighboring song matches, song-position offsets, recorder restarts, and recovered or partial recordings do not prevent deletion of aged matched audio. Stream metadata alone does not count as an audio match.
 
 Audio is normalized to **16 kHz, mono, 16-bit PCM WAV**, approximately **2.76 GB/day** before deletions (about 83 GB per 30 days). This is listenable analysis audio, not an original-quality stereo archive. Unknown audio has no expiry; disk capacity is finite. The recorder pauses at the disk reserve instead of deleting protected audio and retries automatically. A recording already in progress is finalized where space allows. An actual full disk or host power failure can lose the current tail; no system can recover a missed live stream without an upstream archive.
 
@@ -149,7 +144,7 @@ Edit settings directly in each container's Unraid **Edit** form, then click **Ap
 | Recognition interval (seconds) | `10` | Minimum interval between attempt starts |
 | Metadata interval (seconds) | `15` | Poll interval, minimum 5 seconds |
 | Retention grace period (hours) | `1` | Grace period before permitted deletions |
-| Automatically delete matched music | `true` | Enables the five-chunk heuristic described above; set `false` in worker and dashboard to disable |
+| Automatically delete matched music | `true` | Deletes matched audio after the grace period unless marked Keep; set `false` in worker and dashboard to disable |
 | Dashboard username / password | `admin` / blank | Optional HTTP Basic authentication; password field is masked |
 
 Internally these variable fields are passed as Docker environment variables (for example, `STREAM_URL`, `STREAM_NAME`, and `AUTO_DELETE_MATCHED`). You configure them in Unraid's input fields, not a separate file. `STREAM_NAME` only affects the dashboard label and page title; it does not change stream capture or recognition.
@@ -207,7 +202,7 @@ node --check static/app.js
 node tests/frontend.test.cjs
 ```
 
-Tests include real FFmpeg decoding of a generated WAV, partial-chunk recovery, import recovery across database failure, retry state transitions, conservative retention boundaries, deletion-intent recovery, bulk deletion of unkept unidentified audio, history grouping, HTTP byte ranges, authentication, request validation, and CSV escaping. HTTP tests exercise the actual request handler over in-memory transports because this workspace forbids sockets. Frontend behavior tests execute the dashboard with a DOM stand-in, covering rendering, escaping, navigation, review actions, and bulk-deletion confirmation. They do not replace a network or browser integration test.
+Tests include real FFmpeg decoding of a generated WAV, partial-chunk recovery, import recovery across database failure, retry state transitions, retention grace periods and Keep protection, deletion-intent recovery, bulk deletion of unkept unidentified audio, history grouping, HTTP byte ranges, authentication, request validation, and CSV escaping. HTTP tests exercise the actual request handler over in-memory transports because this workspace forbids sockets. Frontend behavior tests execute the dashboard with a DOM stand-in, covering rendering, escaping, navigation, review actions, and bulk-deletion confirmation. They do not replace a network or browser integration test.
 
 For a local development run, install requirements in a virtual environment and launch these in separate terminals. Set `STREAM_URL` to the same direct audio-stream URL for all three processes:
 
