@@ -89,6 +89,53 @@ def audio_path(config, relative):
     return p
 
 
+def delete_audio(config, c, row, now, reason):
+    # Durable intent precedes deletion. Recovery replays it after an interrupted transaction.
+    path = audio_path(config, row['path'])
+    tombstone = config.audio / 'queue' / (row['id'] + '.deleted')
+    atomic_json(tombstone, {'id': row['id'], 'deleted_at': now, 'path': row['path'], 'reason': reason})
+    path.unlink(missing_ok=True)
+    c.execute('UPDATE chunks SET deleted_at=? WHERE id=?', (now, row['id']))
+    c.execute('INSERT INTO events VALUES (?,?,?,?)', ('delete:' + row['id'], now, 'audio_deleted',
+              json.dumps({'chunk': row['id'], 'reason': reason})))
+
+
+def recover_deletions(config):
+    for file in (config.audio / 'queue').glob('*.deleted'):
+        record = read_json(file)
+        if record:
+            with db(config) as c:
+                c.execute('BEGIN IMMEDIATE')
+                row = c.execute('SELECT * FROM chunks WHERE id=?', (record['id'],)).fetchone()
+                if not row:
+                    continue
+                path = audio_path(config, record['path'])
+                # A Keep review made after a rolled-back deletion wins while audio still exists.
+                if row['review'] != 'keep' or not path.exists():
+                    path.unlink(missing_ok=True)
+                    c.execute('UPDATE chunks SET deleted_at=? WHERE id=?', (record['deleted_at'], record['id']))
+                    c.execute('INSERT OR IGNORE INTO events VALUES (?,?,?,?)',
+                              ('delete:' + record['id'], record['deleted_at'], 'audio_deleted',
+                               json.dumps({'chunk': record['id'], 'reason': record.get('reason', 'recovered_deletion')})))
+            file.unlink(missing_ok=True)
+
+
+def delete_unidentified(config):
+    removed = 0
+    now = time.time()
+    with db(config) as c:
+        # Serialize selection and deletion with Keep, Retry, and worker updates.
+        c.execute('BEGIN IMMEDIATE')
+        candidates = list(c.execute("""SELECT * FROM chunks
+            WHERE state='unknown' AND review!='keep' AND deleted_at IS NULL"""))
+        for row in candidates:
+            delete_audio(config, c, row, now, 'manual_unidentified')
+            removed += 1
+    # Only acknowledge tombstones after the SQLite commit.
+    recover_deletions(config)
+    return removed
+
+
 def ingest(config, rebuild=False):
     # Queue files are acknowledgement messages; immutable sidecars allow rebuilding.
     files = list((config.audio / 'queue').glob('*.json'))

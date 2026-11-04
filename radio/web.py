@@ -14,7 +14,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from .storage import audio_path, db, initialize, read_json
+from .storage import audio_path, db, delete_unidentified, initialize, read_json
 
 STATIC = Path(__file__).resolve().parent.parent / 'static'
 log = logging.getLogger(__name__)
@@ -243,7 +243,7 @@ class Handler(BaseHTTPRequestHandler):
             if action == 'evidence':
                 return self.send(dict(chunk=dict(row),observations=evidence))
             if row['deleted_at']:
-                return self.send({'error':'Audio was deleted by retention policy'},410)
+                return self.send({'error':'Audio was deleted'},410)
             return self.serve_audio(audio_path(self.config,row['path']))
         assets = {'/':'index.html','/app.js':'app.js','/style.css':'style.css','/favicon.svg':'favicon.svg'}
         if path in assets:
@@ -306,7 +306,12 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < length < 4096:
                 return self.send({'error':'Invalid body length'},400)
             body = json.loads(self.rfile.read(length))
-            match = re.fullmatch(r'/api/chunks/([a-f0-9]{32})/(review|retry)',urlsplit(self.path).path)
+            if not isinstance(body, dict):
+                return self.send({'error':'Expected JSON object'},400)
+            path = urlsplit(self.path).path
+            if path == '/api/chunks/delete-unidentified':
+                return self.send({'ok':True, 'deleted':delete_unidentified(self.config)})
+            match = re.fullmatch(r'/api/chunks/([a-f0-9]{32})/(review|retry)',path)
             if not match:
                 return self.send({'error':'Not found'},404)
             chunk_id, action = match.groups()

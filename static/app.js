@@ -68,8 +68,8 @@ function renderStatus(s) {
   }));
   setText('timeline-start',time(start));
   $('service-cards').innerHTML=Object.entries(s.services).map(([name,v])=>`<article class="service-card"><h2>${escapeHTML(name[0].toUpperCase()+name.slice(1))}</h2><span class="pill ${v.stale||v.error?'bad':'good'}">${escapeHTML(v.stale?'Heartbeat stale':v.state)}</span><p>Updated ${escapeHTML(ago(v.updated))}</p>${v.error?`<p>${escapeHTML(v.error)}</p>`:''}</article>`).join('');
-  const policies=[['Recognition',s.settings.provider==='shazam'?'ShazamIO · free, unofficial':'Disabled'],['Automatic deletion',s.settings.auto_delete?'Enabled · repeated-match heuristic':'Off · all recordings retained'],['Grace period',s.settings.retention_hours+' hours'],['Audio format','16 kHz mono WAV · ~2.76 GB/day'],['Protected audio','Unknown, failed, pending & manually kept'],['Disk reserve',bytes(s.settings.min_free_bytes)]];
-  $('policy').innerHTML=policies.map(([k,v])=>`<div class="policy-line"><span>${escapeHTML(k)}</span><strong>${escapeHTML(v)}</strong></div>`).join('')+`<p class="footnote">${s.settings.auto_delete?'Automatic deletion cannot reliably detect speech over music. Turn it off to guarantee preservation of captured mixed content.':'Only recordings explicitly released after review are eligible for deletion. Set AUTO_DELETE_MATCHED in your server configuration to opt into heuristic cleanup.'} Browser times use your local timezone.</p>`;
+  const policies=[['Recognition',s.settings.provider==='shazam'?'ShazamIO · free, unofficial':'Disabled'],['Automatic deletion',s.settings.auto_delete?'Enabled · repeated-match heuristic':'Off · manual deletion only'],['Grace period',s.settings.retention_hours+' hours'],['Audio format','16 kHz mono WAV · ~2.76 GB/day'],['Protected from automatic cleanup','Unknown, failed, pending & manually kept'],['Disk reserve',bytes(s.settings.min_free_bytes)]];
+  $('policy').innerHTML=policies.map(([k,v])=>`<div class="policy-line"><span>${escapeHTML(k)}</span><strong>${escapeHTML(v)}</strong></div>`).join('')+`<p class="footnote">${s.settings.auto_delete?'Automatic deletion cannot reliably detect speech over music. Turn it off to disable heuristic cleanup.':'Released recordings are eligible for cleanup after the grace period. Set AUTO_DELETE_MATCHED in your server configuration to opt into heuristic cleanup.'} The library’s Delete unidentified action immediately deletes unkept unidentified audio. Browser times use your local timezone.</p>`;
   $('events').innerHTML=s.events.length?s.events.map(e=>`<div class="event"><span>${escapeHTML(date(e.observed))}</span><div><strong>${escapeHTML(e.kind.replaceAll('_',' '))}</strong><p>${escapeHTML(e.detail)}</p></div></div>`).join(''):empty('No events yet','Recorder connections and interruptions will appear here.');
   setText('last-refresh','Updated '+time(s.now));
 }
@@ -126,6 +126,18 @@ $('close-player').onclick=()=>{ $('audio').pause(); $('audio').removeAttribute('
 $('audio').onended=async()=>{ if(!$('continue-playback').checked || !playingId) return; try { const {next}=await api(`/api/chunks/${playingId}/next`); if(next) play(next.id,next.title,next.started); else toast('End of contiguous available audio.'); } catch(e) { toast(e.message); } };
 $('audio').onerror=()=>toast('Audio unavailable. Check recording details and server storage.');
 $('refresh-library').onclick=()=>loadLibrary().catch(e=>toast(e.message));
+$('delete-unidentified').onclick=async()=>{
+  const button=$('delete-unidentified');
+  if(button.disabled || !confirm('Permanently delete ALL unidentified samples that are not kept? This applies across all pages and filters, deletes audio immediately without the grace period, and cannot be undone. Kept samples, pending samples, recognition errors, and matched audio are preserved. Records and recognition evidence remain.')) return;
+  button.disabled=true;
+  try {
+    const result=await api('/api/chunks/delete-unidentified',{});
+    libraryOffset=0;
+    toast(result.deleted ? `Deleted ${number(result.deleted)} unidentified sample${result.deleted===1?'':'s'}.` : 'No unkept unidentified samples to delete.');
+    await Promise.all([loadLibrary(),refreshStatus()]);
+  } catch(e) { toast(e.message); }
+  finally { button.disabled=false; }
+};
 $('filter').onchange=()=>{ libraryOffset=0; loadLibrary().catch(e=>toast(e.message)); };
 $('search').oninput=()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(()=>{ libraryOffset=0; loadLibrary().catch(e=>toast(e.message)); },300); };
 $('previous').onclick=()=>{ libraryOffset=Math.max(0,libraryOffset-50); loadLibrary().catch(e=>toast(e.message)); };

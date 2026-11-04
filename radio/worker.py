@@ -8,7 +8,7 @@ import time
 import urllib.request
 import uuid
 
-from .storage import audio_path, atomic_json, db, ingest, initialize, read_json, singleton, status
+from .storage import audio_path, db, delete_audio, ingest, initialize, recover_deletions, singleton, status
 
 log = logging.getLogger(__name__)
 
@@ -109,39 +109,12 @@ def retain(config, now=None):
             c.execute('UPDATE chunks SET retention_checked=? WHERE id=?', (now, row['id']))
             if row['review'] != 'release' and not (config.auto_delete and automatic_candidate(c, row, config.chunk_seconds)):
                 continue
-            path = audio_path(config, row['path'])
-            # Durable intent precedes deletion. Recovery replays it if a crash interrupts the transaction.
-            tombstone = config.audio / 'queue' / (row['id'] + '.deleted')
             reason = 'manual_release' if row['review'] == 'release' else 'automatic_heuristic'
-            atomic_json(tombstone, {'id': row['id'], 'deleted_at': now, 'path': row['path'], 'reason': reason})
-            path.unlink(missing_ok=True)
-            c.execute('UPDATE chunks SET deleted_at=? WHERE id=?', (now, row['id']))
-            c.execute('INSERT INTO events VALUES (?,?,?,?)', ('delete:' + row['id'], now, 'audio_deleted',
-                      json.dumps({'chunk': row['id'], 'reason': reason})))
+            delete_audio(config, c, row, now, reason)
             removed += 1
     # Only acknowledge tombstones after the SQLite commit.
     recover_deletions(config)
     return removed
-
-
-def recover_deletions(config):
-    for file in (config.audio / 'queue').glob('*.deleted'):
-        record = read_json(file)
-        if record:
-            with db(config) as c:
-                c.execute('BEGIN IMMEDIATE')
-                row = c.execute('SELECT * FROM chunks WHERE id=?', (record['id'],)).fetchone()
-                if not row:
-                    continue
-                path = audio_path(config, record['path'])
-                # A Keep review made after a rolled-back deletion wins while audio still exists.
-                if row['review'] != 'keep' or not path.exists():
-                    path.unlink(missing_ok=True)
-                    c.execute('UPDATE chunks SET deleted_at=? WHERE id=?', (record['deleted_at'], record['id']))
-                    c.execute('INSERT OR IGNORE INTO events VALUES (?,?,?,?)',
-                              ('delete:' + record['id'], record['deleted_at'], 'audio_deleted',
-                               json.dumps({'chunk': record['id'], 'reason': record.get('reason', 'recovered_deletion')})))
-            file.unlink(missing_ok=True)
 
 
 def run_recognition(config, row):

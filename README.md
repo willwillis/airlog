@@ -56,7 +56,7 @@ Enable **Autostart** for all three containers in the Docker tab. The templates a
 ## What the dashboard does
 
 - **Overview:** recorder status, latest audio match, separately labeled stream metadata, capture coverage over the last 24 hours, recognition backlog, storage, and a two-hour timeline.
-- **Audio library:** filter/search recordings, play or download WAV audio, automatically continue through adjacent available chunks, inspect recognition evidence, keep/release audio, and retry recognition.
+- **Audio library:** filter/search recordings, play or download WAV audio, automatically continue through adjacent available chunks, inspect recognition evidence, keep/release audio, retry recognition, and bulk-delete unkept unidentified samples.
 - **Play history:** consecutive audio matches grouped into observed runs, plus a separate view of stream metadata changes. An unknown interval splits a run; these are not guaranteed full-song play counts.
 - **System health:** heartbeats, disk reserve warnings, queue lag, capture interruptions, retention events, and effective configuration.
 - **CSV export:** all chunk observations, including timestamps, artist/title, review state, and deletion timestamp. Artist/title strings are escaped against spreadsheet formula interpretation.
@@ -76,6 +76,8 @@ There are three review decisions:
 | Release | Permit deletion once its capture time is older than the configured grace period. This is an explicit human decision, including for unknown audio. |
 
 `MATCHED_RETENTION_HOURS=1` is the default grace period. It applies to automatic cleanup and recordings manually released. A release on an older recording permits cleanup on the next worker cycle. Track history and recognition evidence remain after audio deletion. The player stops at missing chunks or connection boundaries.
+
+In the audio library, **Delete unidentified…** asks for confirmation before immediately deleting all unidentified (`unknown`) audio that is not marked **Keep**, across all pages and filters. This manual action bypasses the grace period and works even when automatic cleanup is disabled. Matched, pending, retrying, failed, and kept samples are preserved. Deleted samples retain their records and recognition evidence and appear as **audio deleted** in the library.
 
 To turn automatic cleanup off:
 
@@ -205,7 +207,7 @@ node --check static/app.js
 node tests/frontend.test.cjs
 ```
 
-Tests include real FFmpeg decoding of a generated WAV, partial-chunk recovery, import recovery across database failure, retry state transitions, conservative retention boundaries, deletion-intent recovery, history grouping, HTTP byte ranges, authentication, request validation, and CSV escaping. HTTP tests exercise the actual request handler over in-memory transports because this workspace forbids sockets. Four frontend behavior tests execute the dashboard with a DOM stand-in, covering rendering, escaping, navigation, and review actions. They do not replace a network or browser integration test.
+Tests include real FFmpeg decoding of a generated WAV, partial-chunk recovery, import recovery across database failure, retry state transitions, conservative retention boundaries, deletion-intent recovery, bulk deletion of unkept unidentified audio, history grouping, HTTP byte ranges, authentication, request validation, and CSV escaping. HTTP tests exercise the actual request handler over in-memory transports because this workspace forbids sockets. Frontend behavior tests execute the dashboard with a DOM stand-in, covering rendering, escaping, navigation, review actions, and bulk-deletion confirmation. They do not replace a network or browser integration test.
 
 For a local development run, install requirements in a virtual environment and launch these in separate terminals. Set `STREAM_URL` to the same direct audio-stream URL for all three processes:
 

@@ -31,7 +31,7 @@ test('overview renders live status and uses safe text for station titles',async(
   assert.equal(elements['matched-count'].textContent,'12');
   assert.equal(elements.timeline.children.length,1);
   assert.ok(Math.abs(parseFloat(elements.timeline.children[0].style.width)-15/7200*100)<1e-10);
-  assert.match(elements.policy.innerHTML,/Off · all recordings retained/);
+  assert.match(elements.policy.innerHTML,/Off · manual deletion only/);
 });
 test('library empty state and pagination work',async()=>{
   const {context,elements}=await boot();
@@ -57,4 +57,47 @@ test('keep button sends the explicit review mutation',async()=>{
   assert.equal(call.opts.method,'POST');
   assert.deepEqual(JSON.parse(call.opts.body),{review:'keep'});
   assert.equal(call.opts.headers['X-Airlog-Request'],'1');
+});
+test('bulk delete confirms global immediate deletion and refreshes the library',async()=>{
+  const {context,elements,calls}=await boot({'/api/chunks/delete-unidentified':{ok:true,deleted:2}});
+  let confirmation;
+  context.confirm=message=>{confirmation=message;return true;};
+  elements.filter.value='matched'; elements.search.value='Example';
+  vm.runInContext('libraryOffset=50',context);
+  await elements['delete-unidentified'].onclick();
+  assert.match(confirmation,/ALL unidentified samples that are not kept/);
+  assert.match(confirmation,/all pages and filters/);
+  assert.match(confirmation,/immediately without the grace period/);
+  const call=calls.find(c=>c.path==='/api/chunks/delete-unidentified');
+  assert.equal(call.opts.method,'POST');
+  assert.equal(call.opts.headers['X-Airlog-Request'],'1');
+  assert.deepEqual(JSON.parse(call.opts.body),{});
+  assert.equal(elements.toast.textContent,'Deleted 2 unidentified samples.');
+  assert.ok(calls.some(c=>c.path.startsWith('/api/chunks?offset=0&state=matched&q=Example')));
+  assert.equal(calls.filter(c=>c.path==='/api/status').length,2);
+  assert.equal(elements['delete-unidentified'].disabled,false);
+});
+test('canceling bulk deletion sends no mutation',async()=>{
+  const {context,elements,calls}=await boot();
+  context.confirm=()=>false;
+  await elements['delete-unidentified'].onclick();
+  assert.equal(calls.filter(c=>c.opts?.method==='POST').length,0);
+});
+test('bulk deletion handles no eligible samples',async()=>{
+  const {elements}=await boot({'/api/chunks/delete-unidentified':{ok:true,deleted:0}});
+  await elements['delete-unidentified'].onclick();
+  assert.equal(elements.toast.textContent,'No unkept unidentified samples to delete.');
+});
+test('bulk deletion prevents duplicate requests and allows retry after errors',async()=>{
+  const {context,elements}=await boot();
+  let finish, requests=0;
+  context.fetch=()=>{requests++;return new Promise(resolve=>{finish=resolve;});};
+  const pending=elements['delete-unidentified'].onclick();
+  assert.equal(elements['delete-unidentified'].disabled,true);
+  await elements['delete-unidentified'].onclick();
+  assert.equal(requests,1);
+  finish({ok:false,json:async()=>({error:'Update failed'})});
+  await pending;
+  assert.equal(elements.toast.textContent,'Update failed');
+  assert.equal(elements['delete-unidentified'].disabled,false);
 });

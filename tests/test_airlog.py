@@ -21,7 +21,7 @@ from unittest.mock import patch
 from radio.config import Config
 from radio.recorder import Recorder, finish_capture
 from radio.recognize import normalize
-from radio.storage import atomic_json, audio_path, db, ingest, initialize
+from radio.storage import atomic_json, audio_path, db, delete_audio, delete_unidentified, ingest, initialize
 from radio.worker import automatic_candidate, parse_metadata, retain, recover_deletions, save_result
 from radio.web import Handler, ThreadingHTTPServer, play_runs, snapshot
 
@@ -220,7 +220,7 @@ class RetentionTests(Base):
 
 
 class HistoryTests(Base):
-    def test_unknown_and_sessions_split_runs(self):
+    def test_unknown_splits_runs_but_continuous_sessions_do_not(self):
         self.chunk(start=1000)
         self.chunk(start=1015)
         self.chunk(start=1030,state='unknown')
@@ -228,8 +228,12 @@ class HistoryTests(Base):
         self.chunk(start=1060,session='new')
         with db(self.config) as c:
             result=play_runs(c,0)
-        self.assertEqual(len(result),3)
+        self.assertEqual(len(result),2)
         self.assertEqual(result[-1]['samples'],2)
+        self.assertEqual(result[0]['samples'],2)
+        delete_unidentified(self.config)
+        with db(self.config) as c:
+            self.assertEqual(play_runs(c,0),result)
 
     def test_pending_retry_with_old_key_does_not_bridge_runs(self):
         self.chunk(start=1000)
@@ -316,6 +320,102 @@ class WebTests(Base):
             self.assertTrue(json.load(response)['ok'])
         with db(self.config) as c:
             self.assertEqual(c.execute('SELECT state FROM chunks').fetchone()[0],'pending')
+
+    def test_bulk_delete_only_unkept_unidentified_audio(self):
+        targets=[self.chunk(state='unknown'),
+                 self.chunk(start=time.time(),state='unknown',review='release'),
+                 self.chunk(state='unknown',recovered=True)]
+        protected=[self.chunk(state='unknown',review='keep')]
+        protected += [self.chunk(state=state) for state in ('matched','pending','retry','error','missing')]
+        with db(self.config) as c:
+            c.execute('INSERT INTO observations(chunk_id,observed,provider,result) VALUES (?,?,?,?)',
+                      (targets[0]['id'],1000,'shazam','{}'))
+        # Global scope: URL filters and pagination do not restrict deletion.
+        with self.request('/api/chunks/delete-unidentified?state=matched&q=absent&limit=1&offset=50',{}) as response:
+            self.assertEqual(json.load(response),{'ok':True,'deleted':3})
+        for item in targets:
+            self.assertFalse(audio_path(self.config,item['path']).exists())
+        for item in protected:
+            self.assertTrue(audio_path(self.config,item['path']).exists())
+        with db(self.config) as c:
+            for item in targets + protected:
+                row=c.execute('SELECT * FROM chunks WHERE id=?',(item['id'],)).fetchone()
+                self.assertEqual(row['deleted_at'] is not None,item in targets)
+                self.assertEqual(row['state'],item['state'])
+                self.assertEqual(row['review'],item['review'])
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM observations').fetchone()[0],1)
+            events=c.execute("SELECT detail FROM events WHERE kind='audio_deleted'").fetchall()
+            self.assertEqual(len(events),3)
+            self.assertTrue(all(json.loads(event[0])['reason']=='manual_unidentified' for event in events))
+        self.assertEqual(list((self.config.audio/'queue').glob('*.deleted')),[])
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request('/api/chunks/'+targets[0]['id']+'/audio')
+        self.assertEqual(error.exception.code,410)
+
+    def test_bulk_delete_all_pages_and_repeat_safely(self):
+        for i in range(51):
+            self.chunk(start=1000+i*15,state='unknown')
+        with self.request('/api/chunks/delete-unidentified',{}) as response:
+            self.assertEqual(json.load(response)['deleted'],51)
+        with self.request('/api/chunks/delete-unidentified',{}) as response:
+            self.assertEqual(json.load(response)['deleted'],0)
+        with db(self.config) as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM events').fetchone()[0],51)
+
+    def test_bulk_delete_missing_file_and_empty_library(self):
+        with self.request('/api/chunks/delete-unidentified',{}) as response:
+            self.assertEqual(json.load(response)['deleted'],0)
+        item=self.chunk(state='unknown')
+        audio_path(self.config,item['path']).unlink()
+        with self.request('/api/chunks/delete-unidentified',{}) as response:
+            self.assertEqual(json.load(response)['deleted'],1)
+
+    def test_bulk_delete_recovers_after_interrupted_transaction(self):
+        item=self.chunk(state='unknown')
+        def interrupted(*args):
+            delete_audio(*args)
+            raise RuntimeError('simulated crash before commit')
+        with patch('radio.storage.delete_audio',side_effect=interrupted):
+            with self.assertLogs('radio.web',level='ERROR'):
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    self.request('/api/chunks/delete-unidentified',{})
+        self.assertEqual(error.exception.code,503)
+        self.assertFalse(audio_path(self.config,item['path']).exists())
+        with db(self.config) as c:
+            self.assertIsNone(c.execute('SELECT deleted_at FROM chunks').fetchone()[0])
+        self.assertTrue((self.config.audio/'queue'/(item['id']+'.deleted')).exists())
+        recover_deletions(self.config)
+        with db(self.config) as c:
+            self.assertIsNotNone(c.execute('SELECT deleted_at FROM chunks').fetchone()[0])
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM events').fetchone()[0],1)
+        self.assertEqual(list((self.config.audio/'queue').glob('*.deleted')),[])
+
+    def test_bulk_delete_preserves_audio_if_deletion_intent_cannot_be_written(self):
+        item=self.chunk(state='unknown')
+        with patch('radio.storage.atomic_json',side_effect=OSError('disk full')):
+            with self.assertLogs('radio.web',level='ERROR'):
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    self.request('/api/chunks/delete-unidentified',{})
+        self.assertEqual(error.exception.code,503)
+        self.assertTrue(audio_path(self.config,item['path']).exists())
+        with db(self.config) as c:
+            self.assertIsNone(c.execute('SELECT deleted_at FROM chunks').fetchone()[0])
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM events').fetchone()[0],0)
+
+    def test_bulk_delete_requires_authentication_and_same_origin_json(self):
+        item=self.chunk(state='unknown')
+        for headers,code in [({'X-Airlog-Request':''},403),({'Content-Type':'text/plain'},403)]:
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                self.request('/api/chunks/delete-unidentified',{},headers=headers)
+            self.assertEqual(error.exception.code,code)
+        with patch.dict(os.environ,{'WEB_PASSWORD':'test-pass'}):
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                self.request('/api/chunks/delete-unidentified',{})
+            self.assertEqual(error.exception.code,401)
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request('/api/chunks/delete-unidentified',[])
+        self.assertEqual(error.exception.code,400)
+        self.assertTrue(audio_path(self.config,item['path']).exists())
 
     def test_basic_auth_and_healthcheck(self):
         with patch.dict(os.environ,{'WEB_PASSWORD':'test-pass','WEB_USERNAME':'admin'}):
